@@ -20,6 +20,8 @@ The command line parameters that can be used are:
   discovery information to (default "ecs_file_sd.yml")
 * -config.role-arn (string): ARN of the role to assume when scraping
   the AWS API (optional)
+* -config.default-labels (string): list of default labels (default: all possible labels from list
+  below in format "label1,label2,...,labelN") (optional)
 * -config.server-name-label (string): Docker label to define the server name
   (default "PROMETHEUS_EXPORTER_SERVER_NAME")
 * -config.job-name-label (string): Docker label to define the job name
@@ -29,6 +31,10 @@ The command line parameters that can be used are:
 * -config.filter-label (string): docker label (and optional value) to filter on "NAME_OF_LABEL[=VALUE]".
 * -config.port-label (string): Docker label to define the scrape port of the application
   (if missing an application won't be scraped) (default "PROMETHEUS_EXPORTER_PORT")
+* -config.labels-label (string): Docker label to define constant labels per target
+  (pair list, eg key1=value1,...,keyN=valueN)
+* -config.default-labels-label (string): Docker label to define list of default labels
+  (default "PROMETHEUS_EXPORTER_DEFAULT_LABELS") (optional)
 
 ## Usage
 
@@ -75,6 +81,8 @@ To scrape the containers add following docker labels to them:
 * `PROMETHEUS_EXPORTER_PATH` specify alternative scrape path here (optional)
 * `PROMETHEUS_EXPORTER_SCHEME` specify an alternative scheme here, default is http (optional)
 * `PROMETHEUS_EXPORTER_LABELS` specify an additional labels (optional pair list, eg: "label1=value1,...,labelN=valueN")
+* `PROMETHEUS_EXPORTER_DEFAULT_LABELS` specify a list of default labels that should be attached to
+  the target.
 
 By docker labels one means `dockerLabels` map in ECS task definition JSONs like that:
 ```json
@@ -99,3 +107,14 @@ file the minute it is written).  After reloading your Prometheus
 master configuration, this program will begin informing via
 the discovery file of new targets that Prometheus must scrape.
 
+### Default labels
+
+* job
+* task_arn
+* task_name
+* task_group
+* task_revision
+* cluster_arn
+* container_name
+* container_arn
+* docker_image
