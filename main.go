@@ -36,20 +36,6 @@ import (
 	"github.com/go-yaml/yaml"
 )
 
-type labels struct {
-	TaskArn       string `yaml:"task_arn"`
-	TaskName      string `yaml:"task_name"`
-	JobName       string `yaml:"job,omitempty"`
-	TaskRevision  string `yaml:"task_revision"`
-	TaskGroup     string `yaml:"task_group"`
-	ClusterArn    string `yaml:"cluster_arn"`
-	ContainerName string `yaml:"container_name"`
-	ContainerArn  string `yaml:"container_arn"`
-	DockerImage   string `yaml:"docker_image"`
-	MetricsPath   string `yaml:"__metrics_path__,omitempty"`
-	Scheme        string `yaml:"__scheme__,omitempty"`
-}
-
 // Docker label for enabling dynamic port detection
 const dynamicPortLabel = "PROMETHEUS_DYNAMIC_EXPORT"
 
@@ -60,11 +46,42 @@ var times = flag.Int("config.scrape-times", 0, "how many times to scrape before 
 var roleArn = flag.String("config.role-arn", "", "ARN of the role to assume when scraping the AWS API (optional)")
 var prometheusPortLabel = flag.String("config.port-label", "PROMETHEUS_EXPORTER_PORT", "Docker label to define the scrape port of the application (if missing an application won't be scraped)")
 var prometheusPathLabel = flag.String("config.path-label", "PROMETHEUS_EXPORTER_PATH", "Docker label to define the scrape path of the application")
-var prometheusSchemeLabel= flag.String("config.scheme-label", "PROMETHEUS_EXPORTER_SCHEME", "Docker label to define the scheme of the target application")
+var prometheusSchemeLabel = flag.String("config.scheme-label", "PROMETHEUS_EXPORTER_SCHEME", "Docker label to define the scheme of the target application")
 var prometheusFilterLabel = flag.String("config.filter-label", "", "Docker label (and optionally value) to require to scrape the application")
 var prometheusServerNameLabel = flag.String("config.server-name-label", "PROMETHEUS_EXPORTER_SERVER_NAME", "Docker label to define the server name")
 var prometheusJobNameLabel = flag.String("config.job-name-label", "PROMETHEUS_EXPORTER_JOB_NAME", "Docker label to define the job name")
 var prometheusDynamicPortDetection = flag.Bool("config.dynamic-port-detection", false, fmt.Sprintf("If true, only tasks with the Docker label %s=1 will be scraped", dynamicPortLabel))
+var prometheusLabelsLabel = flag.String("config.labels-label", "PROMETHEUS_EXPORTER_LABELS", "Docker label to define constant labels per target (pair list, eg key1=value1,...,keyN=valueN)")
+
+const (
+	// Label names that can be attached to each target
+	JobName       = "job"
+	TaskArn       = "task_arn"
+	TaskName      = "task_name"
+	TaskGroup     = "task_group"
+	TaskRevision  = "task_revision"
+	ClusterArn    = "cluster_arn"
+	ContainerName = "container_name"
+	ContainerArn  = "container_arn"
+	DockerImage   = "docker_image"
+	MetricsPath   = "__metrics_path__"
+	Scheme        = "__scheme__"
+)
+
+type labels map[string]string
+
+// Set a new label, ignores duplicate keys, omits empty values.
+func (l labels) Set(key, value string) {
+	if key == "" || value == "" {
+		return
+	}
+
+	if _, ok := l[key]; ok {
+		return
+	}
+
+	l[key] = value
+}
 
 // logError is a convenience function that decodes all possible ECS
 // errors and displays them to standard error.
@@ -96,6 +113,25 @@ func GetClusters(svc *ecs.Client) (*ecs.ListClustersOutput, error) {
 		input.NextToken = myoutput.NextToken
 	}
 	return output, nil
+}
+
+// split list of labels and run callback for each not empty key/value pair.
+func forEachLabel(s string, cb func(key, value string)) {
+	for _, label := range strings.Split(s, ",") {
+		pair := strings.Split(label, "=")
+		if len(pair) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(pair[0])
+		value := strings.TrimSpace(pair[1])
+
+		if key == "" || value == "" {
+			continue
+		}
+
+		cb(key, value)
+	}
 }
 
 // AugmentedTask represents an ECS task augmented with an extra set of
@@ -266,11 +302,7 @@ func (t *AugmentedTask) ExporterInformation() []*PrometheusTaskInfo {
 			continue
 		}
 
-		var exporterServerName string
-		var exporterPath string
-		var scheme string
-		var ok bool
-		exporterServerName, ok = d.DockerLabels[*prometheusServerNameLabel]
+		exporterServerName, ok := d.DockerLabels[*prometheusServerNameLabel]
 		if ok {
 			host = strings.TrimRight(exporterServerName, "/")
 		} else {
@@ -281,7 +313,6 @@ func (t *AugmentedTask) ExporterInformation() []*PrometheusTaskInfo {
 		labels := labels{
 			TaskArn:       *t.TaskArn,
 			TaskName:      *t.TaskDefinition.Family,
-			JobName:       d.DockerLabels[*prometheusJobNameLabel],
 			TaskRevision:  fmt.Sprintf("%d", t.TaskDefinition.Revision),
 			TaskGroup:     *t.Group,
 			ClusterArn:    *t.ClusterArn,
@@ -290,14 +321,23 @@ func (t *AugmentedTask) ExporterInformation() []*PrometheusTaskInfo {
 			DockerImage:   *d.Image,
 		}
 
-		exporterPath, ok = d.DockerLabels[*prometheusPathLabel]
+		labels.Set(JobName, d.DockerLabels[*prometheusJobNameLabel])
+
+		exporterPath, ok := d.DockerLabels[*prometheusPathLabel]
 		if ok {
-			labels.MetricsPath = exporterPath
+			labels.Set(MetricsPath, exporterPath)
 		}
 
-		scheme, ok = d.DockerLabels[*prometheusSchemeLabel]
+		scheme, ok := d.DockerLabels[*prometheusSchemeLabel]
 		if ok {
-		    labels.Scheme = scheme
+			labels.Set(Scheme, scheme)
+		}
+
+		constLabels, ok := d.DockerLabels[*prometheusLabelsLabel]
+		if ok {
+			forEachLabel(constLabels, func(key, value string) {
+				labels.Set(key, value)
+			})
 		}
 
 		ret = append(ret, &PrometheusTaskInfo{
