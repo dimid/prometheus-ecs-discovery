@@ -74,6 +74,7 @@ To scrape the containers add following docker labels to them:
 * `PROMETHEUS_EXPORTER_JOB_NAME` specify job name here (optional)
 * `PROMETHEUS_EXPORTER_PATH` specify alternative scrape path here (optional)
 * `PROMETHEUS_EXPORTER_SCHEME` specify an alternative scheme here, default is http (optional)
+* `PROMETHEUS_EXPORTER_LABELS` specify an additional labels (optional pair list, eg: "label1=value1,...,labelN=valueN")
 
 By docker labels one means `dockerLabels` map in ECS task definition JSONs like that:
 ```json
