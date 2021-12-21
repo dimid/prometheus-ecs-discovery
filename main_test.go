@@ -48,10 +48,7 @@ func TestLabelsSetDefault(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			l := NewLabels(tc.DefaultLabels)
-			for k, v := range tc.LabelSet {
-				l.SetDefault(k, v)
-			}
+			l := NewLabels(tc.DefaultLabels, tc.LabelSet)
 
 			result := l.labels
 			for ekey, evalue := range tc.Expected {

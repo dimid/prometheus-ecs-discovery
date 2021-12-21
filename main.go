@@ -99,16 +99,22 @@ type Labels struct {
 	defaults map[string]struct{}
 }
 
-func NewLabels(defaults string) Labels {
+func NewLabels(labelNames string, labels map[string]string) Labels {
 	enabled := make(map[string]struct{})
-	for _, key := range splitLabelString(defaults) {
+	for _, key := range splitLabelString(labelNames) {
 		enabled[key] = struct{}{}
 	}
 
-	return Labels{
+	l := Labels{
 		labels:   make(map[string]string),
 		defaults: enabled,
 	}
+
+	for k, v := range labels {
+		l.SetDefault(k, v)
+	}
+
+	return l
 }
 
 // Set a new label, ignores duplicate keys, omits empty values.
@@ -362,19 +368,19 @@ func (t *AugmentedTask) ExporterInformation() []*PrometheusTaskInfo {
 			defaults = l
 		}
 
-		labels := NewLabels(defaults)
-
-		labels.SetDefault(TaskArn, *t.TaskArn)
-		labels.SetDefault(TaskName, *t.TaskDefinition.Family)
-		labels.SetDefault(TaskRevision, fmt.Sprintf("%d", t.TaskDefinition.Revision))
-		labels.SetDefault(TaskGroup, *t.Group)
-		labels.SetDefault(ClusterArn, *t.ClusterArn)
-		labels.SetDefault(ContainerName, *i.Name)
-		labels.SetDefault(ContainerArn, *i.ContainerArn)
-		labels.SetDefault(DockerImage, *d.Image)
-		labels.SetDefault(JobName, d.DockerLabels[*prometheusJobNameLabel])
-		labels.SetDefault(MetricsPath, d.DockerLabels[*prometheusPathLabel])
-		labels.SetDefault(Scheme, d.DockerLabels[*prometheusSchemeLabel])
+		labels := NewLabels(defaults, map[string]string{
+			JobName:       d.DockerLabels[*prometheusJobNameLabel],
+			TaskArn:       *t.TaskArn,
+			TaskName:      *t.TaskDefinition.Family,
+			TaskGroup:     *t.Group,
+			TaskRevision:  fmt.Sprintf("%d", t.TaskDefinition.Revision),
+			ClusterArn:    *t.ClusterArn,
+			ContainerArn:  *i.ContainerArn,
+			ContainerName: *i.Name,
+			DockerImage:   *d.Image,
+			Scheme:        d.DockerLabels[*prometheusSchemeLabel],
+			MetricsPath:   d.DockerLabels[*prometheusPathLabel],
+		})
 
 		constLabels, ok := d.DockerLabels[*prometheusLabelsLabel]
 		if ok {
